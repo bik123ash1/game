@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Match Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #6e8efb, #a777e3);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .game-container {
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            max-width: 600px;
+            width: 100%;
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2rem;
+        }
+        
+        .game-stats {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+        }
+        
+        .memory-game {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            perspective: 1000px;
+        }
+        
+        .memory-card {
+            height: 120px;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.5s;
+            cursor: pointer;
+        }
+        
+        .memory-card.flip {
+            transform: rotateY(180deg);
+        }
+        
+        .memory-card.matched .front-face {
+            background-color: #a5d6a7;
+            border-color: #4caf50;
+        }
+        
+        .front-face, .back-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 3px solid #3f51b5;
+            font-size: 2rem;
+        }
+        
+        .front-face {
+            background-color: white;
+            transform: rotateY(180deg);
+        }
+        
+        .back-face {
+            background-color: #3f51b5;
+            color: white;
+        }
+        
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+        }
+        
+        button {
+            background-color: #3f51b5;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        
+        button:hover {
+            background-color: #303f9f;
+        }
+        
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+        }
+        
+        .modal.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .modal-content {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+            transform: translateY(-50px);
+            transition: transform 0.3s;
+        }
+        
+        .modal.active .modal-content {
+            transform: translateY(0);
+        }
+        
+        .modal h2 {
+            color: #3f51b5;
+            margin-bottom: 15px;
+        }
+        
+        .modal p {
+            margin-bottom: 20px;
+            font-size: 1.1rem;
+        }
+        
+        @media (max-width: 500px) {
+            .memory-game {
+                grid-template-columns: repeat(3, 1fr);
+            }
+            
+            .memory-card {
+                height: 100px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>Memory Match</h1>
+        <div class="game-stats">
+            <div>Moves: <span id="moves">0</span></div>
+            <div>Pairs: <span id="pairs">0</span>/<span id="total-pairs">8</span></div>
+            <div>Time: <span id="time">00:00</span></div>
+        </div>
+        <div class="memory-game" id="memory-game"></div>
+        <div class="controls">
+            <button id="restart">Restart Game</button>
+        </div>
+    </div>
+    
+    <div class="modal" id="win-modal">
+        <div class="modal-content">
+            <h2>Congratulations!</h2>
+            <p>You've matched all pairs in <span id="final-moves">0</span> moves and <span id="final-time">00:00</span>!</p>
+            <button id="play-again">Play Again</button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const emojis = ['🍎', '🍌', '🍒', '🍓', '🍋', '🍇', '🍉', '🥝', '🍍', '🥭', '🍐', '🥑'];
+            let selectedEmojis = [];
+            let cards = [];
+            let hasFlippedCard = false;
+            let lockBoard = false;
+            let firstCard, secondCard;
+            let moves = 0;
+            let pairs = 0;
+            let totalPairs = 8;
+            let gameStarted = false;
+            let timerInterval;
+            let startTime;
+            
+            const gameBoard = document.getElementById('memory-game');
+            const movesCounter = document.getElementById('moves');
+            const pairsCounter = document.getElementById('pairs');
+            const totalPairsDisplay = document.getElementById('total-pairs');
+            const timeDisplay = document.getElementById('time');
+            const winModal = document.getElementById('win-modal');
+            const finalMovesDisplay = document.getElementById('final-moves');
+            const finalTimeDisplay = document.getElementById('final-time');
+            const restartBtn = document.getElementById('restart');
+            const playAgainBtn = document.getElementById('play-again');
+            
+            function initGame() {
+                // Reset variables
+                gameStarted = false;
+                moves = 0;
+                pairs = 0;
+                clearInterval(timerInterval);
+                timeDisplay.textContent = '00:00';
+                movesCounter.textContent = '0';
+                pairsCounter.textContent = '0';
+                
+                // Clear the game board
+                gameBoard.innerHTML = '';
+                
+                // Select random emojis
+                selectedEmojis = selectRandomEmojis(emojis, totalPairs);
+                
+                // Create and shuffle card pairs
+                cards = createCardPairs(selectedEmojis);
+                
+                // Render cards to the board
+                renderCards();
+            }
+            
+            function selectRandomEmojis(emojiArray, count) {
+                const shuffled = [...emojiArray].sort(() => 0.5 - Math.random());
+                return shuffled.slice(0, count);
+            }
+            
+            function createCardPairs(emojis) {
+                const pairs = [...emojis, ...emojis];
+                return pairs.sort(() => 0.5 - Math.random());
+            }
+            
+            function renderCards() {
+                cards.forEach((emoji, index) => {
+                    const card = createCard(emoji, index);
+                    gameBoard.appendChild(card);
+                });
+            }
+            
+            function createCard(emoji, index) {
+                const card = document.createElement('div');
+                card.classList.add('memory-card');
+                card.dataset.index = index;
+                card.dataset.emoji = emoji;
+                
+                const frontFace = document.createElement('div');
+                frontFace.classList.add('front-face');
+                frontFace.textContent = emoji;
+                
+                const backFace = document.createElement('div');
+                backFace.classList.add('back-face');
+                backFace.textContent = '?';
+                
+                card.appendChild(frontFace);
+                card.appendChild(backFace);
+                
+                card.addEventListener('click', flipCard);
+                
+                return card;
+            }
+            
+            function flipCard() {
+                if (lockBoard) return;
+                if (this === firstCard) return;
+                
+                if (!gameStarted) {
+                    startGame();
+                }
+                
+                this.classList.add('flip');
+                
+                if (!hasFlippedCard) {
+                    // First card flipped
+                    hasFlippedCard = true;
+                    firstCard = this;
+                    return;
+                }
+                
+                // Second card flipped
+                secondCard = this;
+                checkForMatch();
+            }
+            
+            function startGame() {
+                gameStarted = true;
+                startTime = Date.now();
+                startTimer();
+            }
+            
+            function startTimer() {
+                timerInterval = setInterval(() => {
+                    const currentTime = Date.now() - startTime;
+                    const seconds = Math.floor((currentTime / 1000) % 60)
+                        .toString()
+                        .padStart(2, '0');
+                    const minutes = Math.floor(currentTime / 1000 / 60)
+                        .toString()
+                        .padStart(2, '0');
+                    
+                    timeDisplay.textContent = `${minutes}:${seconds}`;
+                }, 1000);
+            }
+            
+            function checkForMatch() {
+                let isMatch = firstCard.dataset.emoji === secondCard.dataset.emoji;
+                
+                // Increment moves
+                moves++;
+                movesCounter.textContent = moves.toString();
+                
+                if (isMatch) {
+                    disableCards();
+                    pairs++;
+                    pairsCounter.textContent = pairs.toString();
+                    
+                    // Check if game is won
+                    if (pairs === totalPairs) {
+                        setTimeout(() => {
+                            endGame();
+                        }, 500);
+                    }
+                } else {
+                    unflipCards();
+                }
+            }
+            
+            function disableCards() {
+                firstCard.removeEventListener('click', flipCard);
+                secondCard.removeEventListener('click', flipCard);
+                
+                firstCard.classList.add('matched');
+                secondCard.classList.add('matched');
+                
+                resetBoard();
+            }
+            
+            function unflipCards() {
+                lockBoard = true;
+                
+                setTimeout(() => {
+                    firstCard.classList.remove('flip');
+                    secondCard.classList.remove('flip');
+                    
+                    resetBoard();
+                }, 1000);
+            }
+            
+            function resetBoard() {
+                [hasFlippedCard, lockBoard] = [false, false];
+                [firstCard, secondCard] = [null, null];
+            }
+            
+            function endGame() {
+                clearInterval(timerInterval);
+                
+                finalMovesDisplay.textContent = moves.toString();
+                finalTimeDisplay.textContent = timeDisplay.textContent;
+                
+                winModal.classList.add('active');
+            }
+            
+            restartBtn.addEventListener('click', () => {
+                initGame();
+            });
+            
+            playAgainBtn.addEventListener('click', () => {
+                winModal.classList.remove('active');
+                initGame();
+            });
+            
+            // Initialize the game
+            initGame();
+        });
+    </script>
+</body>
+</html>
